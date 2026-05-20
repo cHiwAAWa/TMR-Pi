@@ -1,5 +1,6 @@
 #include <string>
 #include <openssl/evp.h>
+#include <openssl/hmac.h>  // 加這行
 #include <cstdio>
 
 std::string compute_aes(const std::string& plaintext) {
@@ -20,7 +21,7 @@ std::string compute_aes(const std::string& plaintext) {
     if (!ctx) return "ERROR_CTX";
 
     // Step 2：init
-    if (1 != EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(),NULL, key, iv)) {
+    if (1 != EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv)) {
         EVP_CIPHER_CTX_free(ctx);
         return "ERROR_INIT";
     }
@@ -35,7 +36,7 @@ std::string compute_aes(const std::string& plaintext) {
     ciphertext_len = len;
 
     //pading flush
-    if (1 != EVP_EncryptFinal_ex(ctx,ciphertext + ciphertext_len, &len)) {
+    if (1 != EVP_EncryptFinal_ex(ctx, ciphertext + ciphertext_len, &len)) {
         EVP_CIPHER_CTX_free(ctx);
         return "ERROR_FINAL";
     }
@@ -44,11 +45,22 @@ std::string compute_aes(const std::string& plaintext) {
     //free
     EVP_CIPHER_CTX_free(ctx);
 
-    //Step 4：byte array change in hex
+    //Step 4：byte array to hex
     char hex_str[2048] = {0};
-    for (int i =0; i <ciphertext_len; i++) {
-        snprintf(hex_str + i * 2,3  , "%02x", ciphertext[i]);
+    for (int i = 0; i < ciphertext_len; i++) {
+        snprintf(hex_str + i * 2, 3, "%02x", ciphertext[i]);
     }
 
-    return std::string(hex_str);
+    //Step 5：HMAC-SHA256
+    unsigned char hmac[32];
+    unsigned int hmac_len = 0;
+    HMAC(EVP_sha256(), key, 32, ciphertext, ciphertext_len, hmac, &hmac_len);
+
+    char hmac_str[65] = {0};
+    for (unsigned int i = 0; i < hmac_len; i++) {
+        snprintf(hmac_str + i * 2, 3, "%02x", hmac[i]);
+    }
+
+    //format cipher:hmac
+    return std::string(hex_str) + ":" + std::string(hmac_str);
 }

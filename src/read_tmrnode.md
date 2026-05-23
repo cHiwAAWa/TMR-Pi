@@ -76,11 +76,33 @@ struct TaskState {
 
 本程式需要傳入節點 ID 以進行身分識別並載入對應的叢集 IP 配置。
 
+### 環境變數設定（首次執行）
+
+三台節點需使用相同的 AES Master Key。由其中一人產生後分發給所有組員：
+
+```bash
+# 產生隨機 key（只需做一次，三台用同一把）
+openssl rand -hex 32
+```
+將輸出的 64 個字元設定為環境變數：
+```bash
+# 寫入 ~/.bashrc 生效
+echo 'export AES_MASTER_KEY="你的64個hex字元"' >> ~/.bashrc
+source ~/.bashrc
+
+# 確認設定成功
+echo $AES_MASTER_KEY
+```
+
 ### 啟動節點
+
 在終端機執行編譯後的程式，並傳入節點編號 (A, B 或 C)：
+
 ```bash
 ./TMR-Pi A
+```
 
-### 操作指令 
+### 操作指令
+
 * **輸入 `fault`**：切換錯誤注入模式 (ON/OFF)。
 * **輸入任意字串**：發起一般加密與投票任務。

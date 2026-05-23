@@ -11,9 +11,9 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <openssl/evp.h>
 #include <atomic>
 #include <random>
+#include <cstdlib>
 #include "aes.h"
 
 #define PORT 8888
@@ -22,6 +22,7 @@
 std::string my_id;
 std::vector<std::string> peer_ips;
 std::atomic<bool> inject_fault(false);
+unsigned char master_key[32] = {0};
 
 struct TaskState {
     std::string plaintext;
@@ -43,6 +44,7 @@ std::string gen_task_id() {
 
     return my_id + "_" + std::to_string(now) + "_" + std::to_string(r);
 }
+
 // ================= UDP =================
 void broadcast(const std::string& msg) {
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -82,23 +84,20 @@ void vote(const std::string& task_id) {
         }
     }
 
-    int expected_nodes = 1 + peer_ips.size();     // SYSTEM NODE 
-    int received_nodes = 1 + task.peer_results.size(); // RECEIVE NODE 
+    int expected_nodes = 1 + peer_ips.size();
+    int received_nodes = 1 + task.peer_results.size();
 
     std::cout << "\n=== Task " << task_id << " 投票結果 ===\n";
 
     // TMR
     if (expected_nodes == 3) {
-
         if (received_nodes == 3) {
-            // NORMAL TMR 
             if (max_count >= 2)
                 std::cout << "[成功] 3TMR 多數決 (" << max_count << "/3)\n";
             else
                 std::cout << "[失敗] 3TMR 無法達成一致\n";
         }
         else if (received_nodes == 2) {
-            // FALL BACK TO DMR 
             if (max_count == 2)
                 std::cout << "[降級成功] 2MR 一致 (node 缺失)\n";
             else
@@ -129,7 +128,7 @@ void vote(const std::string& task_id) {
 void process_task(const std::string& task_id, const std::string& plaintext) {
     std::cout << "\n[任務啟動] ID: " << task_id << " | 內容: " << plaintext << std::endl;
 
-    std::string my_cipher = compute_aes(plaintext);
+    std::string my_cipher = compute_aes(plaintext, master_key);
 
     if (inject_fault.load()) {
         my_cipher += "_WRONG";
@@ -203,7 +202,7 @@ void listener_thread() {
 
             {
                 std::lock_guard<std::mutex> lock(mtx);
-                if (tasks.count(task_id)) continue; // 防重複
+                if (tasks.count(task_id)) continue;
                 tasks[task_id].plaintext = text;
             }
 
@@ -212,7 +211,6 @@ void listener_thread() {
 
         // ===== RESULT =====
         else if (msg.rfind("RESULT:", 0) == 0) {
-
             size_t p1 = msg.find(':', 7);
             size_t p2 = msg.find(':', p1 + 1);
 
@@ -237,6 +235,14 @@ void listener_thread() {
 }
 
 int run_tmrnode(int argc, char* argv[]) {
+    const char* env_key = std::getenv("AES_MASTER_KEY");
+    if (!env_key) {
+        std::cerr << "[錯誤] 請設定環境變數 AES_MASTER_KEY（64 hex chars）\n";
+        return 1;
+    }
+    for (int i = 0; i < 32; i++)
+        sscanf(env_key + i * 2, "%02hhx", &master_key[i]);
+
     std::map<std::string, std::string> cluster_ips = {
         {"A", "192.168.50.41"},
         {"B", "192.168.50.14"},
@@ -270,7 +276,6 @@ int run_tmrnode(int argc, char* argv[]) {
             std::cout << "fault: " << inject_fault.load() << std::endl;
         }
         else if (!input.empty()) {
-
             std::string task_id = gen_task_id();
 
             {

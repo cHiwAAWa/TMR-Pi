@@ -46,7 +46,8 @@ static bool derive_subkey(unsigned char out[32],
 }
 
 std::string compute_aes(const std::string& plaintext,
-                        const unsigned char* master_key) {
+                        const unsigned char* master_key,
+                        const std::string& task_id) {
     // Derive separate subkeys for encryption and authentication
     unsigned char enc_key[32];
     unsigned char mac_key[32];
@@ -59,7 +60,7 @@ std::string compute_aes(const std::string& plaintext,
     // TMR voting requires deterministic encryption across all nodes
     unsigned char iv[16];
     unsigned char iv_key[32];
-    if (!derive_subkey(iv_key, master_key, "aes-iv")) {
+    if (!derive_subkey(iv_key, master_key, task_id.c_str())) {
         return "ERROR_IV_DERIVE";
     }
     memcpy(iv, iv_key, 16);

@@ -38,6 +38,16 @@ struct TaskState {
 std::map<std::string, TaskState> tasks;
 std::mutex mtx;
 
+// ================= 安全日誌輸出 =================
+void safe_log(const std::string& msg) {
+    std::lock_guard<std::mutex> lock(log_mtx);
+    std::cout << msg;
+    if (log_file.is_open()) {
+        log_file << msg;
+        log_file.flush();
+    }
+}
+
 // task id 
 std::string gen_task_id() {
     auto now = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -340,18 +350,12 @@ int run_tmrnode(int argc, char* argv[]) {
     std::string input;
 
     while (true) {
-        {
-            std::lock_guard<std::mutex> lock(log_mtx);
-            std::cout << "\n> ";
-            std::cout.flush();
-        }
+        safe_log("\n> ");
         std::getline(std::cin, input);
 
         if (input == "fault") {
             inject_fault.store(!inject_fault.load());
-            std::lock_guard<std::mutex> lock(log_mtx);
-            std::cout << "fault: " << inject_fault.load() << std::endl;
-            if (log_file.is_open()) log_file << "fault: " << inject_fault.load() << std::endl;
+            safe_log("fault: " + std::to_string(inject_fault.load()) + "\n");
         }
         else if (!input.empty()) {
             std::string task_id = gen_task_id();
@@ -363,6 +367,25 @@ int run_tmrnode(int argc, char* argv[]) {
 
             broadcast("TASK:" + task_id + ":" + input);
             std::thread(process_task, task_id, input).detach();
+        }
+        else if (input == "status") {
+            std::string output = "\n=== 節點狀態 ===\n";
+            output += "節點 ID   : " + my_id + "\n";
+            output += "Fault 模式: " + std::string(inject_fault.load() ? "ON (模擬錯誤)" : "OFF") + "\n";
+
+            {
+                // 以最小化鎖定時間 (Lock Contention) 的原則讀取 tasks
+                std::lock_guard<std::mutex> lock(mtx);
+                output += "任務總數  : " + std::to_string(tasks.size()) + "\n";
+                for (const auto& [id, t] : tasks) {
+                    output += "  " + id + " -> " + (t.finished ? "已完成" : "進行中") +
+                              " | 收到回應: " + std::to_string(t.peer_results.size()) + 
+                              "/" + std::to_string(peer_ips.size()) + "\n";
+                }
+            }
+            
+            output += "================\n";
+            safe_log(output); // 使用全域的 thread-safe 日誌函式一次性輸出
         }
     }
 }

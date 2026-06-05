@@ -21,7 +21,7 @@
 
 // ================= 全域 =================
 std::ofstream log_file;
-std::mutex log_mtx; // [修正] 專為 Log 與 cout 設計的互斥鎖，避免多執行緒寫入撕裂
+std::mutex log_mtx; // 專為 Log 與 cout 設計的互斥鎖，避免多執行緒寫入撕裂
 std::string my_id;
 std::vector<std::string> peer_ips;
 std::atomic<bool> inject_fault(false);
@@ -287,7 +287,7 @@ void listener_thread() {
             {
                 std::lock_guard<std::mutex> lock(mtx);
                 tasks[task_id].peer_results[node_id] = cipher;
-                tasks[task_id].cv.notify_one(); // ← 在鎖內 notify
+                tasks[task_id].cv.notify_one();
             }
         }
     }
@@ -295,7 +295,7 @@ void listener_thread() {
 
 int run_tmrnode(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "用法: ./TMR-Pi A/B/C\n"; // 建議改用 std::cerr 輸出錯誤訊息
+        std::cerr << "用法: ./TMR-Pi A/B/C\n";
         return 1;
     }
 
